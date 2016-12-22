@@ -33,7 +33,7 @@ import os
 ####################################################################################################
 #configuration for iOS build setting
 
-PROJECT_NAME = "FHSupportOldAge"
+PROJECT_NAME = "MyAppName"
 OUTPUT_PATH = "~/Desktop"
 SDK = "iphoneos"
 # ---开发包---
