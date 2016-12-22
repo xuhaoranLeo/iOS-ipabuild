@@ -16,6 +16,7 @@
 #			-p project			使用project进行打包，默认为全局变量PROJECT_NAME
 #			-t target			与project对应使用，默认为全局变量PROJECT_NAME	
 #			-u upload			上传到Web开关，对应配置为UPLOAD_URL与UPLOAD_DATA
+#			-y pgyer			上传到蒲公英开关，对应配置为PGYER_UPLOAD_URL、PGYER_DOWNLOAD_BASE_URL、PGYER_USER_KEY、PGYER_API_KEY
 #			-g gitversion		git该版本短号，如e578f0d，用于标记ipa
 #
 # 备注：
@@ -33,26 +34,19 @@ import os
 ####################################################################################################
 #configuration for iOS build setting
 
-PROJECT_NAME = "MyAppName"
+PROJECT_NAME = "FHSupportOldAge"
 OUTPUT_PATH = "~/Desktop"
 SDK = "iphoneos"
-# ---开发包---
-# CODE_SIGN_IDENTITY= ""
-# PROVISIONING_PROFILE= ""
 # CONFIGURATION = "Debug"
-
-# ---adhoc包---
-CODE_SIGN_IDENTITY= ""
-PROVISIONING_PROFILE= ""
 CONFIGURATION = "Release"
-
-# ---企业包---
-# CODE_SIGN_IDENTITY= ""
-# PROVISIONING_PROFILE= ""
-# CONFIGURATION = "Release"
 
 UPLOAD_URL = ""
 UPLOAD_DATA = {'OS':"iOS", 'APPID':"1", 'VERSION':"1.0.2"}
+
+PGYER_UPLOAD_URL = "http://www.pgyer.com/apiv1/app/upload"
+PGYER_DOWNLOAD_BASE_URL = "http://www.pgyer.com"
+PGYER_USER_KEY = ""
+PGYER_API_KEY = ""
 ####################################################################################################
 
 
@@ -86,19 +80,41 @@ def uploadIPA(path):
 	headers = {'enctype': 'multipart/form-data'}
 	uploadData = UPLOAD_DATA
 	print "uploading...."
-	r = requests.post(UPLOAD_URL, data = uploadData ,files=files,headers=headers)
+	r = requests.post(UPLOAD_URL, data=uploadData ,files=files,headers=headers)
 	if r.status_code == requests.codes.ok:
 		result = r.json()
 		parserUploadResult(result)
 	else:
 		print 'HTTPError,Code:'+r.status_code
+	files.close()
+
+def parserPgyerUploadResult(jsonResult):
+	resultCode = jsonResult['code']
+	if resultCode == 0:
+		downUrl = PGYER_DOWNLOAD_BASE_URL +"/"+jsonResult['data']['appShortcutUrl']
+		print "Upload Success"
+		print "DownUrl is:" + downUrl
+	else:
+		print "Upload Fail!"
+		print "Reason:"+jsonResult['message']
+
+def uploadIPAToPgyer(path):
+	ipaPath = os.environ['HOME'] + '/Desktop' + path
+	print "ipaPath:" + ipaPath
+	files = {'file': open(ipaPath, 'rb')}
+	headers = {'enctype':'multipart/form-data'}
+	payload = {'uKey':PGYER_USER_KEY, '_api_key':PGYER_API_KEY, 'installType':'2', 'password':'123456'}
+	print "uploading to pgyer...."
+	r = requests.post(PGYER_UPLOAD_URL, data=payload ,files=files,headers=headers)
+	if r.status_code == requests.codes.ok:
+		result = r.json()
+		parserPgyerUploadResult(result)
+	else:
+		print 'HTTPError,Code:'+r.status_code
 
 
 def buildProject(project, target, output):
-	#手动证书
-	buildCmd = 'xcodebuild -project %s -target %s -sdk %s -configuration %s build CODE_SIGN_IDENTITY="%s" PROVISIONING_PROFILE="%s"' %(project, target, SDK, CONFIGURATION, CODE_SIGN_IDENTITY, PROVISIONING_PROFILE)
-	#自动证书
-	# buildCmd = 'xcodebuild -project %s -target %s -sdk %s -configuration %s build"' %(project, target, SDK, CONFIGURATION)
+	buildCmd = 'xcodebuild -project %s -target %s -sdk %s -configuration %s build"' %(project, target, SDK, CONFIGURATION)
 	process = subprocess.Popen(buildCmd, shell = True)
 	process.wait()
 
@@ -114,10 +130,7 @@ def buildWorkspace(workspace, scheme, output):
 	process = subprocess.Popen("pwd", stdout=subprocess.PIPE)
 	(stdoutdata, stderrdata) = process.communicate()
 	buildDir = stdoutdata.strip() + '/build'
-	#手动证书
-	buildCmd = 'xcodebuild -workspace %s -scheme %s -sdk %s -configuration %s build CODE_SIGN_IDENTITY="%s" PROVISIONING_PROFILE="%s" SYMROOT=%s' %(workspace, scheme, SDK, CONFIGURATION, CODE_SIGN_IDENTITY, PROVISIONING_PROFILE, buildDir)
-	#自动证书
-	# buildCmd = 'xcodebuild -workspace %s -scheme %s -sdk %s -configuration %s build SYMROOT=%s' %(workspace, scheme, SDK, CONFIGURATION, buildDir)
+	buildCmd = 'xcodebuild -workspace %s -scheme %s -sdk %s -configuration %s build SYMROOT=%s' %(workspace, scheme, SDK, CONFIGURATION, buildDir)
 	process = subprocess.Popen(buildCmd, shell = True)
 	process.wait()
 
@@ -135,6 +148,7 @@ def configePackageConfig(options):
 	target = options.target
 	scheme = options.scheme
 	upload = options.upload
+	pgyer = options.pgyer
 	gitversion = options.gitversion
 	t = time.strftime('%m-%d-%H-%M',time.localtime(time.time()))
 	ipaName = "%s_%s_%s" %(scheme, gitversion, t)
@@ -157,6 +171,8 @@ def configePackageConfig(options):
 	#上传
 	if upload is 'True':
 		uploadIPA("/%s/%s.ipa" %(ipaName, ipaName))
+	elif pgyer is 'True':
+		uploadIPAToPgyer("/%s/%s.ipa" %(ipaName, ipaName))
 
 
 def optional_arg(arg_default):
@@ -177,6 +193,7 @@ def main():
 	parser.add_option("-s", "--scheme", help="scheme name", action="store", default=PROJECT_NAME)
 	parser.add_option("-t", "--target", help="target name", action="store", default=PROJECT_NAME)
 	parser.add_option('-u', '--upload', help="upload ipa", action='callback', callback=optional_arg('True'), dest='upload', default="False")
+	parser.add_option('-y', '--pgyer', help="upload ipa to pgy", action='callback', callback=optional_arg('True'), dest='pgyer', default="False")
 	parser.add_option("-g", "--gitversion", help="git short version code", default="aaaaaa")
 	(options, args) = parser.parse_args()
 	print "options: %s, args: %s" % (options, args)
